@@ -1,0 +1,54 @@
+// ===== Core counts (fact_applications) =====
+Total Applications = DISTINCTCOUNT ( fact_applications[application_id] )
+Abandoned Applications = CALCULATE ( [Total Applications], fact_applications[is_abandoned] = 1 )
+Stalled Applications = CALCULATE ( [Total Applications], fact_applications[is_stalled] = 1 )
+Disbursed Applications = CALCULATE ( [Total Applications], fact_applications[is_disbursed] = 1 )
+
+// ===== Rates =====
+Abandonment Rate = DIVIDE ( [Abandoned Applications], [Total Applications] )
+Stalled Rate = DIVIDE ( [Stalled Applications], [Total Applications] )
+Conversion Rate = DIVIDE ( [Disbursed Applications], [Total Applications] )
+Abandonment Index vs Overall =
+DIVIDE ( [Abandonment Rate], CALCULATE ( [Abandonment Rate], ALL ( fact_applications ) ) )   // 1.0 = average; 2.4 = 2.4x average
+
+// ===== Funnel (fact_stage_progress + dim_stage) =====
+Stage Entered = COUNTROWS ( fact_stage_progress )
+Stage Completed = CALCULATE ( COUNTROWS ( fact_stage_progress ), fact_stage_progress[stage_status] = "Completed" )
+Stage Dropped = CALCULATE ( COUNTROWS ( fact_stage_progress ), fact_stage_progress[stage_status] = "Dropped" )
+Stage Drop-off Rate = DIVIDE ( [Stage Dropped], [Stage Entered] )
+Share of All Drop-offs = DIVIDE ( [Stage Dropped], CALCULATE ( [Stage Dropped], ALL ( dim_stage ) ) )
+Cumulative Conversion =
+VAR _first = CALCULATE ( [Stage Entered], dim_stage[stage_key] = 1, ALL ( dim_stage ) )
+RETURN DIVIDE ( [Stage Completed], _first )
+Highest Drop-off Stage =
+VAR _t = ADDCOLUMNS ( VALUES ( dim_stage[stage_name] ), "@r", [Stage Drop-off Rate] )
+RETURN MAXX ( TOPN ( 1, _t, [@r], DESC ), dim_stage[stage_name] )
+
+// ===== Value at risk (Rs Crore) =====
+Requested Value (Cr) = DIVIDE ( SUM ( fact_applications[loan_amount_inr] ), 10000000 )
+Lost Loan Value (Cr) =
+DIVIDE ( CALCULATE ( SUM ( fact_applications[loan_amount_inr] ), fact_applications[is_abandoned] = 1 ), 10000000 )
+Stalled Loan Value (Cr) =
+DIVIDE ( CALCULATE ( SUM ( fact_applications[loan_amount_inr] ), fact_applications[is_stalled] = 1 ), 10000000 )
+Avg Lost Ticket (Lakh) =
+DIVIDE ( CALCULATE ( AVERAGE ( fact_applications[loan_amount_inr] ), fact_applications[is_abandoned] = 1 ), 100000 )
+
+// ===== Processing time =====
+Avg Processing Days = AVERAGE ( fact_applications[processing_days] )
+Avg Days - Abandoned = CALCULATE ( [Avg Processing Days], fact_applications[is_abandoned] = 1 )
+Avg Days - Disbursed = CALCULATE ( [Avg Processing Days], fact_applications[is_disbursed] = 1 )
+
+// ===== Reasons =====
+Reason Share =
+DIVIDE ( [Abandoned Applications], CALCULATE ( [Abandoned Applications], ALL ( fact_applications[abandonment_reason] ) ) )
+Process Friction Share =
+DIVIDE ( CALCULATE ( [Abandoned Applications], fact_applications[reason_group] = "Process Friction" ), [Abandoned Applications] )
+
+// ===== Trend / target =====
+// Use a visual-level filter is_partial_month = 0 on trend visuals
+Abandonment Rate MoM Change =
+VAR _cur = [Abandonment Rate]
+VAR _prev = CALCULATE ( [Abandonment Rate], DATEADD ( dim_date[date], -1, MONTH ) )
+RETURN _cur - _prev
+Abandonment vs Target = [Abandonment Rate] - 0.055
+Conversion vs Target = [Conversion Rate] - 0.68

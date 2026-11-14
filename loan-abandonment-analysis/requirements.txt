@@ -1,0 +1,5 @@
+pandas>=2.0
+numpy>=1.24
+# only for docs/build_brd.py:
+reportlab>=4.0
+matplotlib>=3.7
